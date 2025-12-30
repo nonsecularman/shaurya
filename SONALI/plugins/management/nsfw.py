@@ -6,7 +6,7 @@ import time
 from PIL import Image
 from pyrogram import filters
 from pyrogram.types import Message
-from SONALI import app   # ✅ SONALI client
+from SONALI import app
 
 logger = logging.getLogger(__name__)
 NSFW_API_URL = "https://nexacoders-nexa-api.hf.space/scan"
@@ -68,7 +68,7 @@ def format_scores_ui(scores: dict) -> str:
         "hentai": "👾",
         "sexy": "💋",
         "neutral": "😐",
-        "drawings": "🎨"
+        "drawings": "🎨",
     }
     sorted_scores = sorted(scores.items(), key=lambda i: i[1], reverse=True)
     return "\n".join(
@@ -77,18 +77,31 @@ def format_scores_ui(scores: dict) -> str:
     )
 
 # ==================================================
-# NSFW TOGGLE COMMAND
+# NSFW TOGGLE COMMAND (FINAL ADMIN FIX)
 # ==================================================
 @app.on_message(filters.command("nsfw") & filters.group)
 async def nsfw_toggle_command(client, message: Message):
 
-    # 🔥 ADMIN CHECK (anonymous admin supported)
-    if message.from_user:
-        member = await client.get_chat_member(message.chat.id, message.from_user.id)
-        if member.status not in ("administrator", "creator"):
-            return await message.reply_text("❌ Only admins can use this command.")
-    # else: anonymous admin → allowed
+    # ✅ FINAL ADMIN CHECK (normal + anonymous + owner)
+    is_admin = False
 
+    # Normal admin / owner
+    if message.from_user:
+        try:
+            member = await client.get_chat_member(message.chat.id, message.from_user.id)
+            if member.status in ("administrator", "creator"):
+                is_admin = True
+        except:
+            pass
+
+    # Anonymous admin (Telegram feature)
+    if message.sender_chat and message.sender_chat.id == message.chat.id:
+        is_admin = True
+
+    if not is_admin:
+        return await message.reply_text("❌ Only admins can use this command.")
+
+    # ------------------------------
     if len(message.command) < 2:
         status = await get_nsfw_status(message.chat.id)
         return await message.reply_text(
@@ -104,7 +117,7 @@ async def nsfw_toggle_command(client, message: Message):
         await message.reply_text("💤 **NSFW Disabled**")
 
 # ==================================================
-# MANUAL SCAN COMMAND
+# MANUAL SCAN
 # ==================================================
 @app.on_message(filters.command("scan") & filters.group)
 async def manual_scan_command(client, message: Message):
@@ -136,7 +149,7 @@ async def manual_scan_command(client, message: Message):
 # ==================================================
 @app.on_message(
     filters.group & (filters.photo | filters.sticker | filters.document),
-    group=5
+    group=5,
 )
 async def nsfw_watcher(client, message: Message):
     if not await get_nsfw_status(message.chat.id):
