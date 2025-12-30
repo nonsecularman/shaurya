@@ -6,14 +6,14 @@ import time
 from PIL import Image
 from pyrogram import filters
 from pyrogram.types import Message
-from SONALI import app   # ✅ IMPORTANT
+from SONALI import app   # ✅ SONALI client
 
 logger = logging.getLogger(__name__)
 NSFW_API_URL = "https://nexacoders-nexa-api.hf.space/scan"
 
-# =========================
-# SIMPLE STORAGE
-# =========================
+# ==================================================
+# SIMPLE IN-MEMORY STORAGE
+# ==================================================
 NSFW_CHATS = set()
 SCAN_CACHE = {}
 
@@ -32,9 +32,9 @@ async def get_cached_scan(file_id):
 async def cache_scan_result(file_id, safe, data):
     SCAN_CACHE[file_id] = {"safe": safe, "data": data}
 
-# =========================
+# ==================================================
 # SESSION
-# =========================
+# ==================================================
 ai_session = None
 
 async def get_session():
@@ -43,9 +43,9 @@ async def get_session():
         ai_session = aiohttp.ClientSession()
     return ai_session
 
-# =========================
+# ==================================================
 # IMAGE OPTIMIZATION
-# =========================
+# ==================================================
 def optimize_image(image_bytes: bytes) -> bytes:
     if len(image_bytes) < 50 * 1024:
         return image_bytes
@@ -53,31 +53,41 @@ def optimize_image(image_bytes: bytes) -> bytes:
         img = Image.open(io.BytesIO(image_bytes))
         img = img.convert("RGB")
         img.thumbnail((256, 256))
-        out_io = io.BytesIO()
-        img.save(out_io, format="JPEG", quality=80)
-        return out_io.getvalue()
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=80)
+        return out.getvalue()
     except Exception:
         return image_bytes
 
-# =========================
+# ==================================================
 # UI FORMAT
-# =========================
+# ==================================================
 def format_scores_ui(scores: dict) -> str:
-    icons = {"porn": "🔞", "hentai": "👾", "sexy": "💋", "neutral": "😐", "drawings": "🎨"}
+    icons = {
+        "porn": "🔞",
+        "hentai": "👾",
+        "sexy": "💋",
+        "neutral": "😐",
+        "drawings": "🎨"
+    }
     sorted_scores = sorted(scores.items(), key=lambda i: i[1], reverse=True)
     return "\n".join(
         f"{icons.get(k,'🔸')} `{k.title().ljust(10)} : {v*100:05.2f}%`"
         for k, v in sorted_scores
     )
 
-# =========================
-# NSFW TOGGLE
-# =========================
+# ==================================================
+# NSFW TOGGLE COMMAND
+# ==================================================
 @app.on_message(filters.command("nsfw") & filters.group)
 async def nsfw_toggle_command(client, message: Message):
-    member = await client.get_chat_member(message.chat.id, message.from_user.id)
-    if member.status not in ("administrator", "creator"):
-        return await message.reply_text("❌ Only admins can use this command.")
+
+    # 🔥 ADMIN CHECK (anonymous admin supported)
+    if message.from_user:
+        member = await client.get_chat_member(message.chat.id, message.from_user.id)
+        if member.status not in ("administrator", "creator"):
+            return await message.reply_text("❌ Only admins can use this command.")
+    # else: anonymous admin → allowed
 
     if len(message.command) < 2:
         status = await get_nsfw_status(message.chat.id)
@@ -88,22 +98,26 @@ async def nsfw_toggle_command(client, message: Message):
 
     if message.command[1].lower() in ("on", "enable", "true"):
         await set_nsfw_status(message.chat.id, True)
-        await message.reply_text("🚀 **NSFW Active.**")
+        await message.reply_text("🚀 **NSFW Enabled**")
     else:
         await set_nsfw_status(message.chat.id, False)
-        await message.reply_text("💤 **NSFW Paused.**")
+        await message.reply_text("💤 **NSFW Disabled**")
 
-# =========================
-# MANUAL SCAN
-# =========================
+# ==================================================
+# MANUAL SCAN COMMAND
+# ==================================================
 @app.on_message(filters.command("scan") & filters.group)
 async def manual_scan_command(client, message: Message):
     if not message.reply_to_message:
-        return await message.reply_text("⚠️ Reply to an image.")
+        return await message.reply_text("⚠️ Reply to an image or sticker.")
 
     status_msg = await message.reply_text("⚡ **Scanning...**")
     start = time.time()
-    is_nsfw, data, reason = await process_media_scan(client, message.reply_to_message, True)
+
+    is_nsfw, data, reason = await process_media_scan(
+        client, message.reply_to_message, manual_override=True
+    )
+
     taken = time.time() - start
 
     if not data:
@@ -117,28 +131,39 @@ async def manual_scan_command(client, message: Message):
         f"{format_scores_ui(data.get('scores', {}))}"
     )
 
-# =========================
+# ==================================================
 # AUTO WATCHER
-# =========================
-@app.on_message(filters.group & (filters.photo | filters.sticker | filters.document), group=5)
+# ==================================================
+@app.on_message(
+    filters.group & (filters.photo | filters.sticker | filters.document),
+    group=5
+)
 async def nsfw_watcher(client, message: Message):
     if not await get_nsfw_status(message.chat.id):
         return
 
-    is_nsfw, data, reason = await process_media_scan(client, message, False)
+    is_nsfw, data, reason = await process_media_scan(
+        client, message, manual_override=False
+    )
+
     if is_nsfw and data:
         await handle_nsfw_detection(client, message, data, reason)
 
-# =========================
+# ==================================================
 # CORE LOGIC
-# =========================
+# ==================================================
 def check_strict_nsfw(scores: dict):
     porn = scores.get("porn", 0)
     hentai = scores.get("hentai", 0)
     sexy = scores.get("sexy", 0)
-    if porn > 0.08: return True, "Porn detected"
-    if hentai > 0.15: return True, "Hentai detected"
-    if sexy > 0.45: return True, "Explicit content"
+
+    if porn > 0.08:
+        return True, "Porn detected"
+    if hentai > 0.15:
+        return True, "Hentai detected"
+    if sexy > 0.45:
+        return True, "Explicit content"
+
     return False, "Safe"
 
 async def process_media_scan(client, message, manual_override=False):
@@ -147,9 +172,11 @@ async def process_media_scan(client, message, manual_override=False):
         return False, None, "No media"
 
     file_id = media.file_unique_id
+
     if not manual_override and file_id in SCAN_CACHE:
         cached = SCAN_CACHE[file_id]
-        return check_strict_nsfw(cached["data"]["scores"])[0], cached["data"], "Cached"
+        is_nsfw, reason = check_strict_nsfw(cached["data"]["scores"])
+        return is_nsfw, cached["data"], "Cached"
 
     stream = await client.download_media(message, in_memory=True)
     image_bytes = optimize_image(bytes(stream.getbuffer()))
@@ -168,11 +195,13 @@ async def process_media_scan(client, message, manual_override=False):
 async def handle_nsfw_detection(client, message, data, reason):
     try:
         await message.delete()
-        msg = await client.send_message(
+        warn = await client.send_message(
             message.chat.id,
-            f"🔞 **NSFW Removed**\n👤 {message.from_user.mention}\n🚨 {reason}"
+            f"🔞 **NSFW Content Removed**\n"
+            f"👤 {message.from_user.mention if message.from_user else 'Anonymous Admin'}\n"
+            f"🚨 {reason}"
         )
         await asyncio.sleep(15)
-        await msg.delete()
-    except:
+        await warn.delete()
+    except Exception:
         pass
