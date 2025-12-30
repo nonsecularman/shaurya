@@ -4,14 +4,15 @@ import aiohttp
 import io
 import time
 from PIL import Image
-from pyrogram import Client, filters
+from pyrogram import filters
 from pyrogram.types import Message
+from SONALI import app   # ✅ IMPORTANT
 
 logger = logging.getLogger(__name__)
 NSFW_API_URL = "https://nexacoders-nexa-api.hf.space/scan"
 
 # =========================
-# SIMPLE STORAGE (SONALI)
+# SIMPLE STORAGE
 # =========================
 NSFW_CHATS = set()
 SCAN_CACHE = {}
@@ -72,19 +73,18 @@ def format_scores_ui(scores: dict) -> str:
 # =========================
 # NSFW TOGGLE
 # =========================
-@Client.on_message(filters.command("nsfw") & filters.group)
-async def nsfw_toggle_command(client: Client, message: Message):
+@app.on_message(filters.command("nsfw") & filters.group)
+async def nsfw_toggle_command(client, message: Message):
     member = await client.get_chat_member(message.chat.id, message.from_user.id)
     if member.status not in ("administrator", "creator"):
         return await message.reply_text("❌ Only admins can use this command.")
 
     if len(message.command) < 2:
         status = await get_nsfw_status(message.chat.id)
-        await message.reply_text(
+        return await message.reply_text(
             f"🚀 **NSFW System:** `{'Enabled' if status else 'Disabled'}`\n"
             "Usage: `/nsfw on` or `/nsfw off`"
         )
-        return
 
     if message.command[1].lower() in ("on", "enable", "true"):
         await set_nsfw_status(message.chat.id, True)
@@ -96,8 +96,8 @@ async def nsfw_toggle_command(client: Client, message: Message):
 # =========================
 # MANUAL SCAN
 # =========================
-@Client.on_message(filters.command("scan") & filters.group)
-async def manual_scan_command(client: Client, message: Message):
+@app.on_message(filters.command("scan") & filters.group)
+async def manual_scan_command(client, message: Message):
     if not message.reply_to_message:
         return await message.reply_text("⚠️ Reply to an image.")
 
@@ -120,8 +120,8 @@ async def manual_scan_command(client: Client, message: Message):
 # =========================
 # AUTO WATCHER
 # =========================
-@Client.on_message(filters.group & (filters.photo | filters.sticker | filters.document), group=5)
-async def nsfw_watcher(client: Client, message: Message):
+@app.on_message(filters.group & (filters.photo | filters.sticker | filters.document), group=5)
+async def nsfw_watcher(client, message: Message):
     if not await get_nsfw_status(message.chat.id):
         return
 
