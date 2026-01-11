@@ -1,7 +1,7 @@
 import requests
 from pyrogram import filters
 from pyrogram.types import Message
-from YourBot import app   # apna main app
+from SONALI import app   # apna main app
 
 API_URL = "https://bot.lyo.su/quote/generate"
 
