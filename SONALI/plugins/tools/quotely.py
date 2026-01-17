@@ -4,7 +4,8 @@ from pyrogram import filters
 from pyrogram.types import Message
 from SONALI import app
 
-API_URL = "https://quotly.netorare.codes/generate"
+# ✅ WORKING QUOTLY API
+API_URL = "https://api.quotly.dev/generate"
 
 
 async def generate_quote(text, user):
@@ -23,15 +24,18 @@ async def generate_quote(text, user):
         "type": "quote"
     }
 
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(total=30)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(API_URL, json=payload) as resp:
             if resp.status != 200:
-                raise Exception(f"API Error {resp.status}")
+                err = await resp.text()
+                raise Exception(f"API Error {resp.status}: {err}")
 
             data = await resp.read()
 
             if not data:
-                raise Exception("Empty image data")
+                raise Exception("Empty image data received")
 
             file = io.BytesIO(data)
             file.name = "quote.png"
@@ -41,10 +45,10 @@ async def generate_quote(text, user):
 
 @app.on_message(filters.command("qt"))
 async def qt_handler(_, message: Message):
-
     reply = message.reply_to_message
     cmd = message.command
 
+    # /qt -r (reply)
     if len(cmd) == 2 and cmd[1] == "-r":
         if not reply or not (reply.text or reply.caption):
             return await message.reply("❌ Reply to a text message")
@@ -52,6 +56,7 @@ async def qt_handler(_, message: Message):
         quote_text = reply.text or reply.caption
         quote_user = reply.from_user
 
+    # /qt text
     elif len(cmd) > 1:
         quote_text = message.text.split(None, 1)[1]
         quote_user = reply.from_user if reply else message.from_user
@@ -59,8 +64,8 @@ async def qt_handler(_, message: Message):
     else:
         return await message.reply(
             "❌ Usage:\n"
-            "/qt text\n"
-            "/qt -r (reply)"
+            "`/qt your text`\n"
+            "`/qt -r` (reply to a message)"
         )
 
     try:
@@ -68,4 +73,4 @@ async def qt_handler(_, message: Message):
         await message.reply_photo(photo=img, caption="✨ Quotely")
 
     except Exception as e:
-        await message.reply(f"❌ Quote generate failed\n{e}")
+        await message.reply(f"❌ Quote generate failed\n\n`{e}`")
