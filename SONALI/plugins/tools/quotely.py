@@ -1,13 +1,15 @@
 from pyrogram import filters
 from pyrogram.types import Message
 from SONALI import app
+
 from PIL import Image, ImageDraw, ImageFont
-import io
-import textwrap
 from io import BytesIO
+import io
 
-print("🔥 LOCAL QT PLUGIN LOADED (100% WORKING) 🔥")
+print("🔥 QT PLUGIN LOADED (FIXED VERSION) 🔥")
 
+
+# ================= IMAGE CREATOR ================= #
 
 def create_quote_image(text, author, profile_photo=None):
     width, height = 800, 400
@@ -19,7 +21,7 @@ def create_quote_image(text, author, profile_photo=None):
 
     try:
         font = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
-        small_font = ImageFont.truetype("DejaVuSans.ttf", 24)
+        small_font = ImageFont.truetype("DejaVuSans.ttf", 22)
     except:
         font = ImageFont.load_default()
         small_font = ImageFont.load_default()
@@ -27,144 +29,142 @@ def create_quote_image(text, author, profile_photo=None):
     text_margin = 160 if profile_photo else 60
     max_text_width = width - text_margin - 80
 
-    # Add profile photo if available
+    # ===== PROFILE PHOTO ===== #
     if profile_photo:
-        profile_size = 110
-        profile_x = 40
-        profile_y = (height - profile_size) // 2
-        
         try:
-            profile_img = Image.open(profile_photo).convert("RGBA")
-            profile_img = profile_img.resize((profile_size, profile_size), Image.Resampling.LANCZOS)
-            
-            # Create perfect circular mask
-            mask = Image.new('L', (profile_size, profile_size), 0)
-            mask_draw = ImageDraw.Draw(mask)
-            mask_draw.ellipse((0, 0, profile_size, profile_size), fill=255)
-            
-            profile_img.putalpha(mask)
-            img.paste(profile_img, (profile_x, profile_y), profile_img)
-            
-        except Exception as e:
-            print(f"Profile photo error: {e}")
+            size = 110
+            x = 40
+            y = (height - size) // 2
 
-    # Wrap text properly
+            pimg = Image.open(profile_photo).convert("RGBA")
+            pimg = pimg.resize((size, size), Image.Resampling.LANCZOS)
+
+            mask = Image.new("L", (size, size), 0)
+            mdraw = ImageDraw.Draw(mask)
+            mdraw.ellipse((0, 0, size, size), fill=255)
+
+            pimg.putalpha(mask)
+            img.paste(pimg, (x, y), pimg)
+
+            draw.ellipse(
+                (x - 3, y - 3, x + size + 3, y + size + 3),
+                outline=(120, 120, 120),
+                width=2
+            )
+        except Exception as e:
+            print("Profile error:", e)
+
+    # ===== TEXT WRAP ===== #
     lines = []
     words = text.split()
-    current_line = ""
-    
+    current = ""
+
     for word in words:
-        test_line = current_line + word + " "
-        if draw.textsize(test_line, font=font)[0] < max_text_width:
-            current_line = test_line
+        test = current + word + " "
+        w, _ = draw.textsize(test, font=font)
+        if w <= max_text_width:
+            current = test
         else:
-            if current_line:
-                lines.append(current_line.strip())
-            current_line = word + " "
-    if current_line:
-        lines.append(current_line.strip())
-    
-    if not lines:
-        lines = [text[:100]]
+            lines.append(current.strip())
+            current = word + " "
 
-    # Calculate text position
-    total_text_height = len(lines) * 40
-    text_y = max(80, (height - total_text_height) // 2)
-    text_x = text_margin
+    if current:
+        lines.append(current.strip())
 
-    # Draw text lines
-    y_offset = text_y
+    total_height = len(lines) * 42
+    start_y = max(80, (height - total_height) // 2)
+    x = text_margin
+
     for line in lines:
-        w, h = draw.textsize(line, font=font)
-        draw.text((text_x, y_offset), line, fill=text_color, font=font)
-        y_offset += 42
+        draw.text((x, start_y), line, fill=text_color, font=font)
+        start_y += 42
 
-    # Draw author name
+    # ===== AUTHOR ===== #
     author_text = f"— {author}"
-    author_w, author_h = draw.textsize(author_text, font=small_font)
-    draw.text((width - 60, height - 50), author_text, fill=(220, 220, 220), font=small_font)
+    aw, ah = draw.textsize(author_text, font=small_font)
+    draw.text(
+        (width - aw - 40, height - ah - 30),
+        author_text,
+        fill=(200, 200, 200),
+        font=small_font
+    )
 
-    # Add subtle border around profile photo
-    if profile_photo:
-        draw.ellipse([profile_x-3, profile_y-3, profile_x+profile_size+3, profile_y+profile_size+3], 
-                    outline=(100, 100, 100), width=2)
+    output = io.BytesIO()
+    img.save(output, "PNG")
+    output.name = "quote.png"
+    output.seek(0)
 
-    file = io.BytesIO()
-    img.save(file, "PNG")
-    file.name = "quote.png"
-    file.seek(0)
-    return file
+    return output
 
+
+# ================= GROUP HANDLER ================= #
 
 @app.on_message(filters.command("qt") & filters.group)
 async def qt_handler(_, message: Message):
     try:
         cmd = message.command
-        
+
         if len(cmd) < 2:
             return await message.reply(
                 "❌ Usage:\n"
-                "/qt Text here\n"
-                "/qt @username Text here\n"
+                "/qt Text\n"
+                "/qt @username Text\n"
                 "/qt -r (reply mode)"
             )
 
-        text = " ".join(cmd[1:])
-        author = None
-        profile_photo = None
+        text = ""
+        author = "User"
         user_id = None
+        profile_photo = None
 
-        # Reply mode (-r)
+        # ===== REPLY MODE ===== #
         if cmd[1] == "-r":
             reply = message.reply_to_message
             if not reply or not reply.from_user:
-                return await message.reply("❌ Reply to a user message!")
-            
+                return await message.reply("❌ Kisi user ke message par reply karo")
+
             user = reply.from_user
-            author = user.first_name or user.first_name or "User"
+            author = user.first_name or "User"
             user_id = user.id
             text = reply.text or reply.caption or "💬"
 
-𝐼ꪜ𝛢𝚴, [19-01-2026 20:43]
-# Mention username mode (@username)
+        # ===== USERNAME MODE ===== #
         elif cmd[1].startswith("@"):
             username = cmd[1][1:]
             try:
                 user = await app.get_users(username)
                 author = user.first_name or username
                 user_id = user.id
-                text = " ".join(cmd[2:]) if len(cmd) > 2 else "💬"
+                text = " ".join(cmd[2:]) or "💬"
             except:
-                return await message.reply(f"❌ User @{username} not found!")
+                return await message.reply(f"❌ @{username} nahi mila")
 
-        # Default mode (sender)
+        # ===== NORMAL MODE ===== #
         else:
             user = message.from_user
             author = user.first_name or "User"
             user_id = user.id
+            text = " ".join(cmd[1:])
 
-        # Get profile photo
-        if user_id:
-            try:
-                photos = await app.get_chat_photos(user_id, limit=1)
-                if photos:
-                    photo = await app.download_media(photos[0].file_id)
-                    profile_photo = BytesIO(photo.getvalue())
-                    photo.close()
-            except Exception:
-                pass
+        # ===== PROFILE PHOTO ===== #
+        try:
+            photos = await app.get_chat_photos(user_id, limit=1)
+            if photos:
+                bio = await app.download_media(photos[0].file_id, in_memory=True)
+                profile_photo = BytesIO(bio.getvalue())
+        except:
+            pass
 
-        if not author:
-            author = "User"
-
-        img = create_quote_image(text[:200], author, profile_photo)  # Limit text length
+        img = create_quote_image(text[:200], author, profile_photo)
         await message.reply_photo(img, caption="✨ Quotely ✨")
-        
+
     except Exception as e:
-        print(f"QT Error: {e}")
-        await message.reply("❌ Something went wrong! Try again.")
+        print("QT ERROR:", e)
+        await message.reply("❌ Error aa gaya, dobara try karo")
 
 
-@app.on_message(filters.command("qt") & ~filters.group)
-async def qt_pm_handler(_, message: Message):
-    await message.reply("❌ Use this command in groups only!")
+# ================= PM BLOCK ================= #
+
+@app.on_message(filters.command("qt") & filters.private)
+async def qt_pm(_, message: Message):
+    await message.reply("❌ Ye command sirf groups me kaam karti hai")
