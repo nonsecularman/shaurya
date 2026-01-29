@@ -2,10 +2,11 @@ import re
 import aiohttp
 from pyrogram import filters
 from pyrogram.types import Message
+
 from SONALI import app
 
 
-# ✅ Download Reel Function
+# ✅ Download Function
 async def send_instagram_media(message: Message, url: str):
 
     processing = await message.reply_text("⏳ Downloading Reel...")
@@ -24,37 +25,43 @@ async def send_instagram_media(message: Message, url: str):
 
     if not result.get("error", True) and data.get("url"):
 
-        video_url = data["url"]
-
         await processing.delete()
         return await message.reply_video(
-            video_url,
+            data["url"],
             caption="✅ Reel Downloaded Successfully"
         )
 
-    return await processing.edit("❌ Failed to Download Reel")
+    return await processing.edit("❌ Failed To Download")
 
 
-# ✅ AUTO LINK DETECTOR (REAL WORKING)
+# ✅ GROUP AUTO LINK FIX (Entity Based)
 @app.on_message(filters.group & filters.text)
-async def insta_auto_handler(client, message: Message):
+async def insta_group_handler(client, message: Message):
 
-    text = message.text or ""
-
-    # अगर instagram word ही नहीं है तो skip
-    if "instagram.com" not in text:
+    if not message.text:
         return
 
-    # message से URL निकालो
-    urls = re.findall(r"https?://[^\s]+", text)
+    # Telegram Entities से link निकालना (सबसे best तरीका)
+    if message.entities:
+        for entity in message.entities:
+            if entity.type in ["url", "text_link"]:
 
-    if not urls:
-        return
+                if entity.type == "url":
+                    url = message.text[
+                        entity.offset : entity.offset + entity.length
+                    ]
 
-    url = urls[0]
+                elif entity.type == "text_link":
+                    url = entity.url
 
-    # सिर्फ reel links allow
-    if "/reel/" not in url:
-        return
+                # सिर्फ Instagram reel पर चले
+                if "instagram.com" in url and "/reel/" in url:
+                    return await send_instagram_media(message, url)
 
-    await send_instagram_media(message, url)
+    # अगर entities ना मिले तो fallback regex
+    match = re.search(r"https?://[^\s]+", message.text)
+    if match:
+        url = match.group(0)
+
+        if "instagram.com" in url and "/reel/" in url:
+            return await send_instagram_media(message, url)
