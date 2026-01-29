@@ -2,14 +2,13 @@ import re
 import aiohttp
 from pyrogram import filters
 from pyrogram.types import Message
-
 from SONALI import app
 
 
-# ✅ Download + Send Reel Function
+# ✅ Download Reel Function
 async def send_instagram_media(message: Message, url: str):
 
-    processing = await message.reply_text("⏳ Reel Downloading...")
+    processing = await message.reply_text("⏳ Downloading Reel...")
 
     api_url = f"https://insta-dl.hazex.workers.dev/?url={url}"
 
@@ -27,28 +26,35 @@ async def send_instagram_media(message: Message, url: str):
 
         video_url = data["url"]
 
-        caption = "✅ Reel Downloaded Successfully"
-
         await processing.delete()
-        return await message.reply_video(video_url, caption=caption)
+        return await message.reply_video(
+            video_url,
+            caption="✅ Reel Downloaded Successfully"
+        )
 
-    else:
-        return await processing.edit("❌ Failed To Download Reel")
+    return await processing.edit("❌ Failed to Download Reel")
 
 
-# ✅ AUTO LINK DETECTOR (Only Link डालने पर भी चलेगा)
-@app.on_message(filters.text & filters.group)
-async def insta_auto_link_handler(client, message: Message):
+# ✅ AUTO LINK DETECTOR (REAL WORKING)
+@app.on_message(filters.group & filters.text)
+async def insta_auto_handler(client, message: Message):
 
-    if not message.text:
+    text = message.text or ""
+
+    # अगर instagram word ही नहीं है तो skip
+    if "instagram.com" not in text:
         return
 
-    # अगर message में instagram link है
-    match = re.search(
-        r"(https?://(?:www\.)?(instagram\.com|instagr\.am)/\S+)",
-        message.text
-    )
+    # message से URL निकालो
+    urls = re.findall(r"https?://[^\s]+", text)
 
-    if match:
-        url = match.group(1)
-        await send_instagram_media(message, url)
+    if not urls:
+        return
+
+    url = urls[0]
+
+    # सिर्फ reel links allow
+    if "/reel/" not in url:
+        return
+
+    await send_instagram_media(message, url)
