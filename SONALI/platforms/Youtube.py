@@ -92,10 +92,15 @@ class YouTube:
             r"(youtube\.com/(watch\?v=|shorts/|playlist\?list=)|youtu\.be/)"
             r"([A-Za-z0-9_-]{11}|PL[A-Za-z0-9_-]+)([&?][^\s]*)?"
         )
+
         self.iregex = re.compile(
             r"https?://(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)"
             r"(?!/(watch\?v=[A-Za-z0-9_-]{11}|shorts/[A-Za-z0-9_-]{11}"
             r"|playlist\?list=PL[A-Za-z0-9_-]+|[A-Za-z0-9_-]{11}))\S*"
+        )
+
+        self.id_regex = re.compile(
+            r"(?:v=|\/)([A-Za-z0-9_-]{11})(?:[&?]|$)"
         )
 
     def get_cookies(self):
@@ -145,6 +150,90 @@ class YouTube:
     def invalid(self, url: str) -> bool:
         return bool(re.match(self.iregex, url or ""))
 
+    async def url(self, message) -> Optional[str]:
+        """
+        Message ya replied message se YouTube URL extract karta hai.
+        """
+        try:
+            text = getattr(message, "text", None) or getattr(message, "caption", None) or ""
+
+            if not text and getattr(message, "reply_to_message", None):
+                reply = message.reply_to_message
+                text = getattr(reply, "text", None) or getattr(reply, "caption", None) or ""
+
+            if not text:
+                return None
+
+            text = text.strip()
+
+            # /play <something>
+            if text.startswith("/") and " " in text:
+                text = text.split(" ", 1)[1].strip()
+
+            match = self.regex.search(text)
+            return match.group(0) if match else None
+
+        except Exception as ex:
+            logger.warning("Failed to extract YouTube URL: %s", ex)
+            return None
+
+    async def query(self, message) -> Optional[str]:
+        """
+        /play song name ya replied text se query nikaalta hai.
+        Agar URL milega to None return karega.
+        """
+        try:
+            text = getattr(message, "text", None) or getattr(message, "caption", None) or ""
+
+            if not text and getattr(message, "reply_to_message", None):
+                reply = message.reply_to_message
+                text = getattr(reply, "text", None) or getattr(reply, "caption", None) or ""
+
+            if not text:
+                return None
+
+            text = text.strip()
+
+            if text.startswith("/") and " " in text:
+                text = text.split(" ", 1)[1].strip()
+
+            if not text:
+                return None
+
+            if self.valid(text):
+                return None
+
+            return text
+
+        except Exception as ex:
+            logger.warning("Failed to extract query: %s", ex)
+            return None
+
+    def video_id(self, url: str) -> Optional[str]:
+        """
+        YouTube URL se video id nikaalta hai.
+        """
+        try:
+            if not url:
+                return None
+
+            if "youtu.be/" in url:
+                part = url.split("youtu.be/")[-1]
+                return part.split("?")[0].split("&")[0].split("/")[0][:11]
+
+            if "shorts/" in url:
+                part = url.split("shorts/")[-1]
+                return part.split("?")[0].split("&")[0].split("/")[0][:11]
+
+            match = self.id_regex.search(url)
+            if match:
+                return match.group(1)
+
+        except Exception as ex:
+            logger.warning("Failed to parse video id from url %s: %s", url, ex)
+
+        return None
+
     async def search(self, query: str, m_id: int, video: bool = False) -> Optional[Track]:
         try:
             _search = VideosSearch(query, limit=1, with_live=False)
@@ -173,6 +262,46 @@ class YouTube:
             logger.warning("Failed to parse YouTube search result: %s", ex)
 
         return None
+
+    async def details(self, url: str, m_id: int, video: bool = False) -> Optional[Track]:
+        """
+        Direct YouTube URL se basic Track object banata hai.
+        """
+        try:
+            video_id = self.video_id(url)
+            if not video_id:
+                return None
+
+            # py_yt se same URL ko search style me fetch karne ki try
+            _search = VideosSearch(url, limit=1, with_live=False)
+            results = await _search.next()
+
+            if results and results.get("result"):
+                data = results["result"][0]
+                return Track(
+                    id=data.get("id") or video_id,
+                    channel_name=(data.get("channel") or {}).get("name", ""),
+                    duration=data.get("duration"),
+                    duration_sec=_to_seconds(data.get("duration")),
+                    message_id=m_id,
+                    title=_safe_title(data.get("title")),
+                    thumbnail=_safe_thumb(data.get("thumbnails")),
+                    url=data.get("link") or url,
+                    view_count=(data.get("viewCount") or {}).get("short", ""),
+                    video=video,
+                )
+
+            return Track(
+                id=video_id,
+                message_id=m_id,
+                title="YouTube Track",
+                url=url,
+                video=video,
+            )
+
+        except Exception as ex:
+            logger.warning("Failed to fetch details for url %s: %s", url, ex)
+            return None
 
     async def playlist(
         self,
@@ -262,7 +391,7 @@ class YouTube:
         else:
             ydl_opts = {
                 **base_opts,
-                "format": "bestaudio[acodec=opus]/bestaudio",
+                "format": "bestaudio[acodec=opus]/bestaudio/best",
             }
 
         def _download():
@@ -282,8 +411,11 @@ class YouTube:
 
 
 # =========================================================
+# Singleton instance
+# =========================================================
+youtube = YouTube()
+
+# =========================================================
 # Compatibility alias
-# If somewhere __init__.py imports YouTubeAPI,
-# this prevents ImportError.
 # =========================================================
 YouTubeAPI = YouTube
