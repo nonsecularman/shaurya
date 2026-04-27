@@ -1,4 +1,4 @@
-# Copyright (c) 2025 AnonymousX1025
+# Copyright (c) 2025 SONALImousX1025
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
@@ -13,8 +13,8 @@ from pathlib import Path
 
 from py_yt import Playlist, VideosSearch
 
-from anony import logger
-from anony.helpers import Track, utils
+from SONALI import logger
+from SONALI.helpers import Track, utils
 
 
 class YouTube:
@@ -22,7 +22,7 @@ class YouTube:
         self.base = "https://www.youtube.com/watch?v="
         self.cookies = []
         self.checked = False
-        self.cookie_dir = "anony/cookies"
+        self.cookie_dir = "SONALI/cookies"
         self.warned = False
         self.regex = re.compile(
             r"(https?://)?(www\.|m\.|music\.)?"
